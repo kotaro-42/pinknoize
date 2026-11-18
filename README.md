@@ -1,26 +1,26 @@
 # Pink Noise
 
-**Web Audio だけ**でピンクノイズを再生する PWA。実行時に Max / RNBO は不要。
-
-`export/` は Max からの RNBO 書き出し置き場（参照用・将来用）。音は `js/app.js` 内のアルゴリズムで生成。
-
-## 構成
+**Web Audio のみ**の PWA。実行ファイルは次のとおり。
 
 ```text
-index.html  style.css  sw.js  js/app.js
+index.html  style.css  sw.js  manifest.json  js/app.js
 ```
 
-（`js/rnbo.min.js` と `export/Pinknoise.json` はオフライン用キャッシュから外してよい）
+旧 RNBO 関連は `archive/rnbo-legacy/` と `export/` に**保管のみ**（`index.html` からは読み込まない）。
 
-## 互換性
+## なぜフォルダに残っていても動かないわけではないか
 
-- Safari / iOS 向け。`AudioContext` と `localStorage` があれば動作
-- RNBO より古い iPad / iPhone で起動しやすい
+ブラウザが読むのは **`index.html` が `<script>` で指定したものだけ**です。  
+`guardrails.js` や `rnbo.min.js` がディスク上にあっても、HTML に書いてなければ**実行されません**。
+
+表示が古いときの原因はほぼ **Safari のキャッシュ / Service Worker** です（`index.html` 冒頭で v9 から古いキャッシュ削除）。
 
 ## 本番
 
 https://kotaro-42.github.io/pinknoize/
 
-## キャッシュ更新
+画面に **「v9 Web Audio」** と出れば新しい版。
 
-`sw.js` の `CACHE_NAME`（現在 `pink-noise-v8`）
+## キャッシュ
+
+`sw.js` の `CACHE_NAME`（現在 `pink-noise-v9`）
