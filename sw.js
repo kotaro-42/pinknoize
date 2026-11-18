@@ -1,15 +1,50 @@
-var CACHE_NAME = "pink-noise-v8";
+var CACHE_NAME = "pink-noise-v9";
 
 var PRECACHE_URLS = [
     "./",
     "./index.html",
     "./style.css",
     "./manifest.json",
-    "./js/app.js",
+    "./js/app.js?v=9",
     "./icons/icon-192.png",
     "./icons/icon-512.png",
     "./icons/apple-touch-icon.png",
 ];
+
+function networkFirst(request) {
+    return fetch(request)
+        .then(function (response) {
+            if (response && response.status === 200) {
+                var copy = response.clone();
+                caches.open(CACHE_NAME).then(function (cache) {
+                    cache.put(request, copy);
+                });
+            }
+            return response;
+        })
+        .catch(function () {
+            return caches.match(request, { ignoreSearch: true });
+        });
+}
+
+function cacheFirst(request) {
+    return caches.match(request, { ignoreSearch: true }).then(function (cached) {
+        if (cached) {
+            return cached;
+        }
+        return networkFirst(request);
+    });
+}
+
+function isHtmlOrAppJs(url) {
+    var p = url.pathname;
+    return (
+        p.indexOf("index.html") >= 0 ||
+        p.indexOf("/js/app.js") >= 0 ||
+        p === "/pinknoize/" ||
+        p === "/pinknoize"
+    );
+}
 
 self.addEventListener("install", function (event) {
     event.waitUntil(
@@ -53,29 +88,10 @@ self.addEventListener("fetch", function (event) {
         return;
     }
 
-    event.respondWith(
-        caches.match(request, { ignoreSearch: true }).then(function (cached) {
-            var fetchPromise = fetch(request)
-                .then(function (response) {
-                    if (response && response.status === 200) {
-                        var copy = response.clone();
-                        caches.open(CACHE_NAME).then(function (cache) {
-                            cache.put(request, copy);
-                        });
-                    }
-                    return response;
-                })
-                .catch(function () {
-                    if (cached) {
-                        return cached;
-                    }
-                    if (request.mode === "navigate") {
-                        return caches.match("./index.html");
-                    }
-                    return cached;
-                });
+    if (request.mode === "navigate" || isHtmlOrAppJs(url)) {
+        event.respondWith(networkFirst(request));
+        return;
+    }
 
-            return cached || fetchPromise;
-        })
-    );
+    event.respondWith(cacheFirst(request));
 });

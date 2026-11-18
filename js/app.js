@@ -5,6 +5,7 @@
 (function () {
     "use strict";
 
+    var APP_VERSION = "9";
     var APP_READY_KEY = "pink-noise-app-ready-v1";
 
     var audioContext = null;
@@ -59,7 +60,7 @@
         try {
             localStorage.setItem(APP_READY_KEY, "1");
         } catch (e) {}
-        setOfflineHint("オフライン利用可", true);
+        setOfflineHint("オフライン利用可（v" + APP_VERSION + " Web Audio）", true);
     }
 
     function setPatchLoading(loading) {
@@ -308,7 +309,14 @@
 
         if ("serviceWorker" in navigator) {
             window.addEventListener("load", function () {
-                navigator.serviceWorker.register("sw.js").catch(function () {});
+                navigator.serviceWorker
+                    .register("sw.js?v=" + APP_VERSION)
+                    .then(function (reg) {
+                        if (reg && reg.update) {
+                            reg.update();
+                        }
+                    })
+                    .catch(function () {});
             });
         }
 

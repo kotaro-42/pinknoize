@@ -16,9 +16,9 @@
     <noscript>このアプリを利用するには JavaScript を有効にしてください。</noscript>
     <main class="app" id="app">
         <h1 class="app-title">Pink Noise</h1>
-        <p class="offline-hint" id="offline-hint">オフライン準備: 未完了</p>
+        <p class="offline-hint" id="offline-hint">起動中…（v9）</p>
         <p class="app-hint" id="status-hint">再生するには「再生」をタップしてください</p>
-        <button type="button" class="play-button" id="play-toggle" aria-pressed="false" disabled>
+        <button type="button" class="play-button" id="play-toggle" aria-pressed="false">
             <span class="play-button-label" id="play-label">再生</span>
         </button>
         <section class="volume-block">
@@ -37,6 +37,58 @@
         <p class="load-error" id="load-error" hidden role="alert"></p>
     </main>
 
-    <script src="js/app.js"></script>
+    <!-- 旧 RNBO 版の SW/キャッシュを一度外してから本体を読み込む -->
+    <script>
+    (function () {
+        var APP_VERSION = "9";
+        function loadApp() {
+            var s = document.createElement("script");
+            s.src = "js/app.js?v=" + APP_VERSION;
+            s.onerror = function () {
+                var el = document.getElementById("load-error");
+                if (el) {
+                    el.hidden = false;
+                    el.textContent =
+                        "スクリプトを読み込めませんでした。通信を確認してページを更新してください。";
+                }
+            };
+            document.body.appendChild(s);
+        }
+        function purgeThenLoad() {
+            var pending = 0;
+            function done() {
+                pending--;
+                if (pending <= 0) {
+                    loadApp();
+                }
+            }
+            pending = 1;
+            if ("serviceWorker" in navigator) {
+                pending++;
+                navigator.serviceWorker.getRegistrations().then(function (regs) {
+                    var i;
+                    for (i = 0; i < regs.length; i++) {
+                        regs[i].unregister();
+                    }
+                    done();
+                }, done);
+            }
+            if (window.caches && caches.keys) {
+                pending++;
+                caches.keys().then(function (keys) {
+                    var j;
+                    for (j = 0; j < keys.length; j++) {
+                        if (keys[j].indexOf("pink-noise") === 0) {
+                            caches.delete(keys[j]);
+                        }
+                    }
+                    done();
+                }, done);
+            }
+            done();
+        }
+        purgeThenLoad();
+    })();
+    </script>
 </body>
 </html>
