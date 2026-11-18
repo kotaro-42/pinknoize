@@ -16,7 +16,9 @@ let audioInitPromise = null;
 
 let isPlaying = false;
 let patchReady = false;
+let offlineReady = false;
 let pendingVolume = 50;
+let engineReady = false;
 
 const appEl = document.getElementById("app");
 const playToggle = document.getElementById("play-toggle");
@@ -24,7 +26,12 @@ const playLabel = document.getElementById("play-label");
 const volumeSlider = document.getElementById("volume-slider");
 const volumeReadout = document.getElementById("volume-readout");
 const statusHint = document.getElementById("status-hint");
+const offlineHint = document.getElementById("offline-hint");
 const loadError = document.getElementById("load-error");
+
+function resolveAssetUrl(relativePath) {
+    return new URL(relativePath, document.baseURI).href;
+}
 
 function showLoadError(message) {
     if (loadError) {
@@ -41,12 +48,42 @@ function clearLoadError() {
     }
 }
 
-function setPlayButtonState({ disabled, label }) {
-    if (playToggle) {
-        playToggle.disabled = disabled;
+function setOfflineReady(ready, source) {
+    offlineReady = ready;
+    if (offlineHint) {
+        if (!ready) {
+            offlineHint.textContent = "オフライン準備: 未完了";
+            offlineHint.classList.remove("is-ready");
+        } else {
+            const via = source === "idb" ? "（保存済みデータ）" : "";
+            offlineHint.textContent = `オフライン利用可${via}`;
+            offlineHint.classList.add("is-ready");
+        }
     }
-    if (playLabel && label !== undefined) {
-        playLabel.textContent = label;
+}
+
+function setPlayBusy(busy) {
+    if (playToggle) {
+        playToggle.classList.toggle("is-busy", busy);
+        playToggle.setAttribute("aria-busy", busy ? "true" : "false");
+    }
+    if (playLabel) {
+        if (busy) {
+            playLabel.textContent = "起動中…";
+        } else if (!isPlaying) {
+            playLabel.textContent = patchReady ? "再生" : "読み込み中…";
+        } else {
+            playLabel.textContent = "停止";
+        }
+    }
+}
+
+function setPatchLoading(loading) {
+    if (playToggle) {
+        playToggle.disabled = loading;
+    }
+    if (playLabel && loading) {
+        playLabel.textContent = "読み込み中…";
     }
 }
 
@@ -58,7 +95,7 @@ function setUiPlaying(playing) {
     if (playToggle) {
         playToggle.setAttribute("aria-pressed", playing ? "true" : "false");
     }
-    if (playLabel && !playToggle?.disabled) {
+    if (playLabel) {
         playLabel.textContent = playing ? "停止" : "再生";
     }
     if (statusHint) {
@@ -68,6 +105,7 @@ function setUiPlaying(playing) {
               ? "再生するには「再生」をタップしてください"
               : "読み込み中…";
     }
+    PlaybackSession.setMediaPlaybackState(playing);
 }
 
 function applyOutputGain(percent) {
@@ -86,19 +124,20 @@ function applyOutputGain(percent) {
     outputGain.gain.setTargetAtTime(linear, audioContext.currentTime, 0.02);
 }
 
-function findPatchVolumeParam() {
+function getPatchVolumeParam() {
     if (!device) {
         return null;
+    }
+    if (device.numParameters > 0) {
+        return device.parameters[0];
     }
     return (
         device.parameters.find((p) => p.id === RNBO_PATCH_VOLUME_PARAM) ||
         device.parameters.find((p) => p.name === RNBO_PATCH_VOLUME_PARAM) ||
-        device.parameters[0] ||
         null
     );
 }
 
-/** iOS: AudioContext 作成と resume はユーザー操作の直後・await 前に行う */
 function primeAudioContextFromGesture() {
     const WAContext = window.AudioContext || window.webkitAudioContext;
     if (!audioContext) {
@@ -107,92 +146,121 @@ function primeAudioContextFromGesture() {
         outputGain.gain.value = pendingVolume / 100;
         outputGain.connect(audioContext.destination);
     }
-    void audioContext.resume();
+    const resumeResult = audioContext.resume();
+    if (resumeResult && typeof resumeResult.catch === "function") {
+        resumeResult.catch((err) => console.warn("AudioContext resume:", err));
+    }
+    PlaybackSession.requestPlaybackAudioSession();
 }
 
-async function ensureAudioEngine() {
-    if (device) {
-        await audioContext?.resume();
+function startAudioEngineInitFromGesture() {
+    if (device || audioInitPromise || !patchReady || !patcherCache) {
+        return;
+    }
+    primeAudioContextFromGesture();
+    audioInitPromise = buildAudioEngine();
+}
+
+async function buildAudioEngine() {
+    clearLoadError();
+
+    if (!window.RNBO) {
+        showLoadError(
+            "RNBO ライブラリが見つかりません。オフラインの場合は一度オンラインで開いてください。"
+        );
+        return false;
+    }
+
+    if (!audioContext || !outputGain) {
+        showLoadError("音声の初期化に失敗しました。");
+        return false;
+    }
+
+    let dependencies = [];
+    try {
+        const dependenciesResponse = await fetch(resolveAssetUrl("export/dependencies.json"));
+        dependencies = await dependenciesResponse.json();
+        dependencies = dependencies.map((d) =>
+            d.file ? { ...d, file: "export/" + d.file } : d
+        );
+    } catch {
+        /* empty dependencies are fine */
+    }
+
+    try {
+        device = await RNBO.createDevice({
+            context: audioContext,
+            patcher: patcherCache,
+        });
+    } catch (err) {
+        console.error(err);
+        showLoadError(
+            `RNBO の起動に失敗しました。（${err?.message || err}）`
+        );
+        device = null;
+        audioInitPromise = null;
+        engineReady = false;
+        return false;
+    }
+
+    if (dependencies.length) {
+        await device.loadDataBufferDependencies(dependencies);
+    }
+
+    device.node.connect(outputGain);
+    patchVolumeParam = getPatchVolumeParam();
+
+    if (patchVolumeParam) {
+        patchVolumeParam.value = 0;
+    }
+
+    applyOutputGain(pendingVolume);
+    engineReady = true;
+    return true;
+}
+
+async function waitForAudioEngine() {
+    if (device && engineReady) {
         return true;
     }
-    if (audioInitPromise) {
-        return audioInitPromise;
+    if (!audioInitPromise) {
+        startAudioEngineInitFromGesture();
     }
-
-    audioInitPromise = (async () => {
-        clearLoadError();
-
-        if (!window.RNBO) {
-            showLoadError(
-                "RNBO ライブラリが見つかりません。オフラインの場合は一度オンラインで開いてください。"
-            );
-            return false;
-        }
-
-        if (!patcherCache) {
-            showLoadError("パッチがまだ読み込まれていません。しばらく待ってから再度タップしてください。");
-            return false;
-        }
-
-        primeAudioContextFromGesture();
-        if (!audioContext || !outputGain) {
-            showLoadError("音声の初期化に失敗しました。");
-            return false;
-        }
-
-        await audioContext.resume();
-
-        let dependencies = [];
-        try {
-            const dependenciesResponse = await fetch("export/dependencies.json");
-            dependencies = await dependenciesResponse.json();
-            dependencies = dependencies.map((d) =>
-                d.file ? { ...d, file: "export/" + d.file } : d
-            );
-        } catch {
-            /* empty dependencies are fine */
-        }
-
-        try {
-            device = await RNBO.createDevice({
-                context: audioContext,
-                patcher: patcherCache,
-            });
-        } catch (err) {
-            console.error(err);
-            showLoadError(
-                `RNBO の起動に失敗しました。ページを再読み込みして、もう一度「再生」をタップしてください。（${err?.message || err}）`
-            );
-            device = null;
-            audioInitPromise = null;
-            return false;
-        }
-
-        if (dependencies.length) {
-            await device.loadDataBufferDependencies(dependencies);
-        }
-
-        device.node.connect(outputGain);
-        patchVolumeParam = findPatchVolumeParam();
-
-        if (patchVolumeParam) {
-            patchVolumeParam.value = 0;
-        }
-
-        applyOutputGain(pendingVolume);
-        return true;
-    })();
-
+    if (!audioInitPromise) {
+        showLoadError("音声エンジンの準備ができていません。");
+        return false;
+    }
     return audioInitPromise;
 }
 
+async function resumeIfWasPlaying() {
+    if (!isPlaying || !audioContext) {
+        return;
+    }
+    try {
+        await audioContext.resume();
+        await PlaybackSession.startKeeper();
+    } catch (e) {
+        console.warn("Resume after visibility:", e);
+    }
+}
+
 async function startPlayback() {
-    const ready = await ensureAudioEngine();
-    if (!ready || !device || !patchVolumeParam || !audioContext) {
+    primeAudioContextFromGesture();
+    const ready = await waitForAudioEngine();
+    if (!ready || !device || !audioContext) {
         return false;
     }
     await audioContext.resume();
-    patchVolumeParam.value = 1;
+
+    const vol = patchVolumeParam || getPatchVolumeParam();
+    if (vol) {
+        vol.value = 1;
+        patchVolumeParam = vol;
+    }
+
+    applyOutputGain(pendingVolume);
+    await PlaybackSession.startKeeper();
     setUiPlaying(true);
     return true;
 }
@@ -201,6 +269,7 @@ async function stopPlayback() {
     if (patchVolumeParam) {
         patchVolumeParam.value = 0;
     }
+    PlaybackSession.stopKeeper();
     setUiPlaying(false);
 }
 
@@ -214,23 +283,26 @@ async function handlePlayToggle() {
         return;
     }
 
-    setPlayButtonState({ disabled: true, label: "起動中…" });
+    if (!patchReady) {
+        showLoadError("パッチを読み込み中です。少し待ってから再度タップしてください。");
+        return;
+    }
+
+    setPlayBusy(true);
     try {
-        primeAudioContextFromGesture();
         const started = await startPlayback();
         if (!started) {
             setUiPlaying(false);
         }
     } finally {
-        if (patchReady) {
-            setPlayButtonState({ disabled: false, label: isPlaying ? "停止" : "再生" });
-        }
+        setPlayBusy(false);
     }
 }
 
 async function prefetchPatcher() {
-    setPlayButtonState({ disabled: true, label: "読み込み中…" });
+    setPatchLoading(true);
     setUiPlaying(false);
+    setOfflineReady(false);
 
     if (!window.RNBO) {
         showLoadError(
@@ -239,47 +311,63 @@ async function prefetchPatcher() {
         return;
     }
 
-    let response;
     try {
-        response = await fetch(PATCH_EXPORT_URL);
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
-        }
-        patcherCache = await response.json();
+        const { patcher, source } = await OfflineStore.fetchPatcher(resolveAssetUrl(PATCH_EXPORT_URL));
+        patcherCache = patcher;
         patchReady = true;
+        setOfflineReady(true, source);
         clearLoadError();
-        setPlayButtonState({ disabled: false, label: "再生" });
+        setPatchLoading(false);
         if (statusHint) {
             statusHint.textContent = "再生するには「再生」をタップしてください";
+        }
+        if (playLabel) {
+            playLabel.textContent = "再生";
         }
     } catch (err) {
         console.error(err);
         showLoadError(
-            "パッチの読み込みに失敗しました。ネットワークを確認してページを再読み込みしてください。"
+            "パッチの読み込みに失敗しました。一度オンラインで開くか、ページを再読み込みしてください。"
         );
-        setPlayButtonState({ disabled: true, label: "読み込み失敗" });
+        if (playLabel) {
+            playLabel.textContent = "読み込み失敗";
+        }
     }
 }
 
 function registerServiceWorker() {
     if (!("serviceWorker" in navigator)) {
+        if (offlineHint) {
+            offlineHint.textContent = "Service Worker 非対応（オフライン制限あり）";
+        }
         return;
     }
+    const swUrl = new URL("sw.js", window.location.href);
     window.addEventListener("load", () => {
         navigator.serviceWorker
-            .register("./sw.js", { scope: "./" })
+            .register(swUrl, { scope: new URL("./", window.location.href).href })
+            .then(() => {
+                if (!offlineReady && offlineHint) {
+                    offlineHint.textContent = "オフライン準備: キャッシュ更新中…";
+                }
+            })
             .catch((err) => console.warn("Service Worker registration failed:", err));
     });
 }
 
 function bindUi() {
-    playToggle?.addEventListener(
-        "click",
-        () => {
-            void handlePlayToggle();
-        },
-        { passive: true }
-    );
+    const beginGesture = () => {
+        if (!patchReady || isPlaying) {
+            return;
+        }
+        startAudioEngineInitFromGesture();
+    };
+
+    playToggle?.addEventListener("pointerdown", beginGesture, { passive: true });
+    playToggle?.addEventListener("touchstart", beginGesture, { passive: true });
+    playToggle?.addEventListener("click", () => {
+        void handlePlayToggle();
+    });
 
     volumeSlider?.addEventListener("input", () => {
         applyOutputGain(Number(volumeSlider.value));
@@ -287,6 +375,21 @@ function bindUi() {
 
     pendingVolume = Number(volumeSlider?.value ?? 50);
     applyOutputGain(pendingVolume);
+
+    PlaybackSession.setupMediaSession({
+        onPlay: () => {
+            if (!isPlaying) {
+                void startPlayback();
+            }
+        },
+        onPause: () => {
+            if (isPlaying) {
+                void stopPlayback();
+            }
+        },
+    });
+
+    PlaybackSession.bindLifecycle(resumeIfWasPlaying);
 }
 
 registerServiceWorker();

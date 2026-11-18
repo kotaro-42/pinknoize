@@ -10,6 +10,7 @@
     <meta name="rnbo-version" content="1.4.2">
     <link rel="stylesheet" href="style.css">
     <link rel="manifest" href="manifest.json">
+    <base href="./">
     <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
     <title>Pink Noise</title>
 </head>
@@ -17,6 +18,7 @@
     <noscript>このアプリを利用するには JavaScript を有効にしてください。</noscript>
     <main class="app" id="app">
         <h1 class="app-title">Pink Noise</h1>
+        <p class="offline-hint" id="offline-hint">オフライン準備: 未完了</p>
         <p class="app-hint" id="status-hint">再生するには「再生」をタップしてください</p>
         <button type="button" class="play-button" id="play-toggle" aria-pressed="false" disabled>
             <span class="play-button-label" id="play-label">再生</span>
@@ -41,7 +43,9 @@
     </main>
 
     <script src="js/rnbo.min.js"></script>
+    <script src="js/offline.js"></script>
+    <script src="js/session.js"></script>
     <script src="js/guardrails.js"></script>
-    <script src="js/app.js"></script>
+    <script src="js/app.js?v=4"></script>
 </body>
 </html>

@@ -38,8 +38,19 @@ body {
     text-align: center;
 }
 
+.offline-hint {
+    margin: -0.25rem 0 0;
+    font-size: 0.75rem;
+    color: #8a8a9a;
+    text-align: center;
+}
+
+.offline-hint.is-ready {
+    color: #7ab89a;
+}
+
 .app-hint {
-    margin: -0.5rem 0 0;
+    margin: 0.25rem 0 0;
     font-size: 0.875rem;
     color: #a8a8b8;
     text-align: center;
@@ -72,6 +83,11 @@ body {
     cursor: not-allowed;
     opacity: 0.55;
     transform: none;
+}
+
+.play-button.is-busy {
+    opacity: 0.85;
+    cursor: wait;
 }
 
 .app.is-playing .play-button {
