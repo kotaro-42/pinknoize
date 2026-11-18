@@ -64,8 +64,14 @@ body {
     color: #1a1a2e;
 }
 
-.play-button:active {
+.play-button:active:not(:disabled) {
     transform: scale(0.98);
+}
+
+.play-button:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+    transform: none;
 }
 
 .app.is-playing .play-button {
