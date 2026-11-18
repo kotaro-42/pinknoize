@@ -1,3 +1,29 @@
+# Pink Noise（オフライン対応 PWA）
+
+iPad ブラウザ向けのピンクノイズ再生 Web アプリです。再生・停止、音量（Web Audio の GainNode）、初回アクセス時の Service Worker キャッシュによるオフライン起動に対応しています。
+
+## 起動方法
+
+```sh
+npx http-server
+```
+
+ブラウザで表示された URL を開き、**一度オンラインで全リソースを読み込んだあと**、オフラインでも利用できます（HTTPS または `localhost` が必要です）。
+
+## iPad でホーム画面に追加
+
+Safari / Chrome でページを開き、「ホーム画面に追加」でスタンドアロン表示できます。
+
+## ファイル更新時
+
+`sw.js` の `CACHE_NAME`（例: `pink-noise-v2`）を変更すると、次回アクセス時にキャッシュが更新されます。
+
+## 制限事項
+
+iPadOS では、他アプリへの切り替えや画面ロック中の連続再生はブラウザに制約があります。前面表示での再生を前提としてください。
+
+---
+
 # RNBO Webpage Example
 
 This example shows you how to add dynamic audio to a webpage, using the web export feature of RNBO, part of [Max 8](https://cycling74.com/products/max) made by [Cycling '74](https://cycling74.com).

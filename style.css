@@ -1,54 +1,169 @@
-html, body {
-    margin: 0;
-    padding: 0;
-}
-#rnbo-root {
-    height: 100vh;
-    width: 100vw;
-}
-#background {
-    position: absolute;
-    z-index: -1;
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
 }
 
-h2, em {
+html,
+body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    overflow: hidden;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, 'Hiragino Sans', sans-serif;
+    background: #1a1a2e;
+    color: #f0f0f5;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.app {
+    min-height: 100%;
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: clamp(1.25rem, 4vw, 2.5rem);
+    padding: max(1.5rem, env(safe-area-inset-top)) max(1.5rem, env(safe-area-inset-right))
+        max(1.5rem, env(safe-area-inset-bottom)) max(1.5rem, env(safe-area-inset-left));
+    max-width: 28rem;
+    margin: 0 auto;
+}
+
+.app-title {
+    margin: 0;
+    font-size: clamp(1.75rem, 5vw, 2.25rem);
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-align: center;
+}
+
+.app-hint {
+    margin: -0.5rem 0 0;
+    font-size: 0.875rem;
+    color: #a8a8b8;
+    text-align: center;
+}
+
+.app.is-playing .app-hint {
+    color: #8fd4a8;
+}
+
+.play-button {
+    width: min(100%, 16rem);
+    min-height: 3.5rem;
+    padding: 1rem 2rem;
+    font-size: 1.25rem;
+    font-weight: 600;
+    border: none;
+    border-radius: 1rem;
+    cursor: pointer;
+    touch-action: manipulation;
+    transition: background 0.15s ease, transform 0.1s ease;
+    background: #e8a4b8;
+    color: #1a1a2e;
+}
+
+.play-button:active {
+    transform: scale(0.98);
+}
+
+.app.is-playing .play-button {
+    background: #5c6b8a;
+    color: #f0f0f5;
+}
+
+.volume-block {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.volume-label {
+    font-size: 1rem;
+    font-weight: 500;
+    text-align: center;
+}
+
+.volume-slider {
+    width: 100%;
+    min-height: 2.75rem;
+    margin: 0;
+    -webkit-appearance: none;
+    appearance: none;
+    background: transparent;
+    cursor: pointer;
+}
+
+.volume-slider::-webkit-slider-runnable-track {
+    height: 0.5rem;
+    border-radius: 999px;
+    background: #3d3d52;
+}
+
+.volume-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 1.75rem;
+    height: 1.75rem;
+    margin-top: -0.625rem;
+    border-radius: 50%;
+    background: #e8a4b8;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+
+.volume-slider::-moz-range-track {
+    height: 0.5rem;
+    border-radius: 999px;
+    background: #3d3d52;
+}
+
+.volume-slider::-moz-range-thumb {
+    width: 1.75rem;
+    height: 1.75rem;
+    border: none;
+    border-radius: 50%;
+    background: #e8a4b8;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+
+.volume-readout {
+    margin: 0;
+    font-size: 1.5rem;
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+    color: #d4d4de;
+}
+
+.volume-readout.is-muted {
+    color: #888898;
+}
+
+.load-error {
+    margin: 0;
+    padding: 1rem;
+    font-size: 0.875rem;
+    text-align: center;
+    color: #ffb4b4;
+    background: rgba(234, 80, 80, 0.15);
+    border-radius: 0.5rem;
     width: 100%;
 }
 
-#rnbo-root {
-    margin: auto;
-    max-width: 540px;
-}
+@media (orientation: landscape) and (max-height: 500px) {
+    .app {
+        flex-direction: row;
+        flex-wrap: wrap;
+        justify-content: center;
+        max-width: 40rem;
+        gap: 1rem 2rem;
+    }
 
-#rnbo-clickable-keyboard {
-    display: flex;
-    flex-wrap: wrap;
-}
+    .app-title {
+        width: 100%;
+    }
 
-#rnbo-clickable-keyboard > div {
-    margin: 2px;
-    border: solid black 1px;
-    min-height: 50px;
-    flex-grow: 1;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-}
-
-#rnbo-clickable-keyboard > div.clicked {
-    background: #222222;
-    color: #dddddd;
-}
-
-#rnbo-parameter-sliders {
-    display: flex;
-    flex-direction: column;
-}
-
-#rnbo-parameter-sliders > div {
-    display: flex;
-}
-
-#rnbo-parameter-sliders > div > input:first-of-type {
-    flex-grow: 1;
+    .volume-block {
+        flex: 1 1 12rem;
+    }
 }
