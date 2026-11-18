@@ -1,35 +1,27 @@
 # Pink Noise
 
-iPad 向けピンクノイズ PWA（RNBO Web Export）。**優先度と制約**は [docs/SPEC.md](docs/SPEC.md) を正とする。
+シンプルな PWA（RNBO + 単一 `app.js`）。仕様は [docs/SPEC.md](docs/SPEC.md)。
 
-## 優先度（要約）
+## 構成
 
-1. **オフライン** — 初回同期後、ネットなしで起動・再生・音量（SW + IndexedDB + 同梱 RNBO）
-2. **画面オフ継続** — ベストエフォート（Web では保証不可。SPEC 参照）
-3. **バックグラウンド** — ベストエフォート（同上）
-4. **再生・停止**
-5. **音量** — GainNode（パッチ不変更）
+```text
+index.html  style.css  sw.js  manifest.json
+js/rnbo.min.js  js/app.js   ← アプリ本体はここだけ
+export/Pinknoise.json       ← 変更しない
+```
 
-## 本番 URL
+## 互換性
+
+- **iOS / iPadOS 13.4+** 推奨（`localStorage` + `fetch` + RNBO）
+- **iOS 12 以下** は未保証
+- `file://` 不可。HTTPS または `localhost` で配信
+
+## 本番
 
 https://kotaro-42.github.io/pinknoize/
 
-**初回はオンラインで開く** →「オフライン利用可」表示後、機内モードで確認。
+初回オンライン →「オフライン利用可」→ 機内モードで確認
 
-ホーム画面に追加（スタンドアロン）を推奨。
+## 更新時
 
-## ローカル開発
-
-```sh
-npx http-server
-```
-
-`file://` では動作しません。
-
-## キャッシュ更新
-
-`sw.js` の `CACHE_NAME` を上げる（現在 `pink-noise-v4`）。`index.html` の `app.js?v=*` も同期。
-
-## Phase 2（画面オフ・BG を保証する場合）
-
-ネイティブシェル（Capacitor 等）+ バックグラウンド音楽モード。詳細は [docs/SPEC.md](docs/SPEC.md)。
+`sw.js` の `CACHE_NAME` を変更（現在 `pink-noise-v6`）
