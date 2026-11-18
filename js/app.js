@@ -4,22 +4,28 @@
 (function () {
     "use strict";
 
-    var APP_VERSION = "11";
+    var APP_VERSION = "12";
     var APP_READY_KEY = "pink-noise-app-ready-v1";
-    /** ホワイトノイズ振幅（高域が多いのでピンクよりやや控えめ） */
     var NOISE_AMPLITUDE = 0.22;
-    /** スライダー前の固定ブースト */
     var NOISE_MAKEUP_GAIN = 1.55;
+    var HPF_FREQUENCY = 1000;
+    var HPF_Q_DEFAULT = 0.707;
 
     var audioContext = null;
     var outputGain = null;
     var noiseMakeupGain = null;
+    var highPass = null;
+    var hpSendGain = null;
+    var bypassGain = null;
+    var limiter = null;
     var noiseSource = null;
     var noiseBuffer = null;
 
     var isPlaying = false;
     var appReady = false;
     var pendingVolume = 50;
+    var hpfEnabled = true;
+    var hpfQ = HPF_Q_DEFAULT;
 
     var keeperAudio = null;
     var SILENT_WAV =
@@ -29,6 +35,9 @@
     var playLabel = document.getElementById("play-label");
     var volumeSlider = document.getElementById("volume-slider");
     var volumeReadout = document.getElementById("volume-readout");
+    var hpfToggle = document.getElementById("hpf-toggle");
+    var hpfQSlider = document.getElementById("hpf-q-slider");
+    var hpfQReadout = document.getElementById("hpf-q-readout");
     var statusHint = document.getElementById("status-hint");
     var offlineHint = document.getElementById("offline-hint");
     var loadError = document.getElementById("load-error");
@@ -151,6 +160,60 @@
         return buffer;
     }
 
+    function applyHpfRouting() {
+        if (!hpSendGain || !bypassGain || !audioContext) {
+            return;
+        }
+        var t = audioContext.currentTime;
+        hpSendGain.gain.setTargetAtTime(hpfEnabled ? 1 : 0, t, 0.02);
+        bypassGain.gain.setTargetAtTime(hpfEnabled ? 0 : 1, t, 0.02);
+    }
+
+    function applyHpfQ(q) {
+        hpfQ = Math.max(0.5, Math.min(2, q));
+        if (highPass) {
+            highPass.Q.setTargetAtTime(hpfQ, audioContext.currentTime, 0.02);
+        }
+        if (hpfQReadout) {
+            hpfQReadout.textContent = hpfQ.toFixed(1);
+        }
+        if (hpfQSlider) {
+            hpfQSlider.value = String(hpfQ);
+        }
+    }
+
+    function buildOutputGraph(ctx) {
+        highPass = ctx.createBiquadFilter();
+        highPass.type = "highpass";
+        highPass.frequency.value = HPF_FREQUENCY;
+        highPass.Q.value = hpfQ;
+
+        hpSendGain = ctx.createGain();
+        bypassGain = ctx.createGain();
+
+        limiter = ctx.createDynamicsCompressor();
+        limiter.threshold.value = -6;
+        limiter.knee.value = 6;
+        limiter.ratio.value = 10;
+        limiter.attack.value = 0.003;
+        limiter.release.value = 0.12;
+
+        outputGain = ctx.createGain();
+        outputGain.gain.value = pendingVolume / 100;
+
+        noiseMakeupGain = ctx.createGain();
+        noiseMakeupGain.gain.value = NOISE_MAKEUP_GAIN;
+
+        highPass.connect(hpSendGain);
+        hpSendGain.connect(noiseMakeupGain);
+        bypassGain.connect(noiseMakeupGain);
+        noiseMakeupGain.connect(limiter);
+        limiter.connect(outputGain);
+        outputGain.connect(ctx.destination);
+
+        applyHpfRouting();
+    }
+
     function primeAudio() {
         var Ctx = window.AudioContext || window.webkitAudioContext;
         if (!Ctx) {
@@ -159,12 +222,7 @@
         }
         if (!audioContext) {
             audioContext = new Ctx();
-            outputGain = audioContext.createGain();
-            outputGain.gain.value = pendingVolume / 100;
-            noiseMakeupGain = audioContext.createGain();
-            noiseMakeupGain.gain.value = NOISE_MAKEUP_GAIN;
-            noiseMakeupGain.connect(outputGain);
-            outputGain.connect(audioContext.destination);
+            buildOutputGraph(audioContext);
             noiseBuffer = createWhiteNoiseBuffer(audioContext);
         }
         try {
@@ -220,8 +278,10 @@
         noiseSource = audioContext.createBufferSource();
         noiseSource.buffer = noiseBuffer;
         noiseSource.loop = true;
-        noiseSource.connect(noiseMakeupGain || outputGain);
+        noiseSource.connect(highPass);
+        noiseSource.connect(bypassGain);
         noiseSource.start(0);
+        applyHpfRouting();
 
         applyVolume(pendingVolume);
         setPlaying(true);
@@ -322,6 +382,23 @@
             volumeSlider.addEventListener("input", function () {
                 applyVolume(Number(volumeSlider.value));
             });
+        }
+
+        if (hpfToggle) {
+            hpfEnabled = !!hpfToggle.checked;
+            hpfToggle.addEventListener("change", function () {
+                hpfEnabled = !!hpfToggle.checked;
+                applyHpfRouting();
+            });
+        }
+
+        if (hpfQSlider) {
+            hpfQSlider.addEventListener("input", function () {
+                applyHpfQ(Number(hpfQSlider.value));
+            });
+            applyHpfQ(Number(hpfQSlider.value) || HPF_Q_DEFAULT);
+        } else {
+            applyHpfQ(HPF_Q_DEFAULT);
         }
 
         pendingVolume = volumeSlider ? Number(volumeSlider.value) : 50;

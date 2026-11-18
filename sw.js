@@ -1,11 +1,11 @@
-var CACHE_NAME = "pink-noise-v11";
+var CACHE_NAME = "pink-noise-v12";
 
 var PRECACHE_URLS = [
     "./",
     "./index.html",
     "./style.css",
     "./manifest.json",
-    "./js/app.js?v=11",
+    "./js/app.js?v=12",
     "./icons/icon-192.png",
     "./icons/icon-512.png",
     "./icons/apple-touch-icon.png",
