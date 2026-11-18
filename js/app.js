@@ -1,22 +1,20 @@
-/* Pink Noise — 単一スクリプト（iOS 13.4+ 想定、ES5 互換） */
+/**
+ * Pink Noise — Web Audio のみ（Max / RNBO 不要）
+ * export/ の RNBO 資産は残すがランタイムでは使わない
+ */
 (function () {
     "use strict";
 
-    var PATCH_PATH = "export/Pinknoise.json";
-    var PATCH_LS_KEY = "pink-noise-patch-v1";
+    var APP_READY_KEY = "pink-noise-app-ready-v1";
 
     var audioContext = null;
     var outputGain = null;
-    var device = null;
-    var patchVolumeParam = null;
-    var patcherCache = null;
-    var audioInitPromise = null;
-    var busyTimer = null;
+    var noiseSource = null;
+    var noiseBuffer = null;
 
     var isPlaying = false;
-    var patchReady = false;
+    var appReady = false;
     var pendingVolume = 50;
-    var useTouchPlay = "ontouchstart" in window;
 
     var keeperAudio = null;
     var SILENT_WAV =
@@ -31,22 +29,14 @@
     var loadError = document.getElementById("load-error");
     var appEl = document.getElementById("app");
 
-    function assetUrl(relativePath) {
-        var link = document.createElement("a");
-        link.href = relativePath;
-        return link.href;
-    }
-
-    function errMsg(err) {
-        return err && err.message ? err.message : String(err);
-    }
+    var useTouchPlay = "ontouchstart" in window;
+    var busyTimer = null;
 
     function showError(message) {
         if (loadError) {
             loadError.hidden = false;
             loadError.textContent = message;
         }
-        console.error(message);
     }
 
     function clearError() {
@@ -61,49 +51,15 @@
             return;
         }
         offlineHint.textContent = text;
-        if (ready) {
-            offlineHint.classList.add("is-ready");
-        } else {
-            offlineHint.classList.remove("is-ready");
-        }
+        offlineHint.classList.toggle("is-ready", !!ready);
     }
 
-    function savePatchText(text) {
+    function markAppReady() {
+        appReady = true;
         try {
-            localStorage.setItem(PATCH_LS_KEY, text);
-            return true;
-        } catch (e) {
-            return false;
-        }
-    }
-
-    function loadPatchText() {
-        try {
-            return localStorage.getItem(PATCH_LS_KEY);
-        } catch (e) {
-            return null;
-        }
-    }
-
-    function fetchPatcher() {
-        return fetch(assetUrl(PATCH_PATH))
-            .then(function (res) {
-                if (!res.ok) {
-                    throw new Error("HTTP " + res.status);
-                }
-                return res.text();
-            })
-            .then(function (text) {
-                savePatchText(text);
-                return JSON.parse(text);
-            })
-            .catch(function (netErr) {
-                var saved = loadPatchText();
-                if (saved) {
-                    return JSON.parse(saved);
-                }
-                throw netErr;
-            });
+            localStorage.setItem(APP_READY_KEY, "1");
+        } catch (e) {}
+        setOfflineHint("オフライン利用可", true);
     }
 
     function setPatchLoading(loading) {
@@ -111,18 +67,20 @@
             playToggle.disabled = !!loading;
         }
         if (playLabel) {
-            playLabel.textContent = loading ? "読み込み中…" : "再生";
+            playLabel.textContent = loading ? "準備中…" : "再生";
         }
     }
 
     function beginBusyIndicator() {
-        clearBusyIndicator();
+        if (busyTimer) {
+            clearTimeout(busyTimer);
+        }
         busyTimer = setTimeout(function () {
-            if (playToggle) {
-                playToggle.classList.add("is-busy");
-            }
             if (playLabel) {
                 playLabel.textContent = "起動中…";
+            }
+            if (playToggle) {
+                playToggle.classList.add("is-busy");
             }
         }, 350);
     }
@@ -176,24 +134,53 @@
         }
     }
 
-    function getVolumeParam() {
-        if (!device || device.numParameters < 1) {
-            return null;
+    /** Paul Kellet 系 7 段 — ループ用バッファに焼き込み */
+    function createPinkNoiseBuffer(ctx) {
+        var sampleRate = ctx.sampleRate;
+        var length = sampleRate * 3;
+        var buffer = ctx.createBuffer(1, length, sampleRate);
+        var out = buffer.getChannelData(0);
+        var b0 = 0;
+        var b1 = 0;
+        var b2 = 0;
+        var b3 = 0;
+        var b4 = 0;
+        var b5 = 0;
+        var b6 = 0;
+        var i;
+        var white;
+
+        for (i = 0; i < length; i++) {
+            white = Math.random() * 2 - 1;
+            b0 = 0.99886 * b0 + white * 0.0555179;
+            b1 = 0.99332 * b1 + white * 0.0750759;
+            b2 = 0.969 * b2 + white * 0.153852;
+            b3 = 0.8665 * b3 + white * 0.3104856;
+            b4 = 0.55 * b4 + white * 0.5329522;
+            b5 = -0.7616 * b5 - white * 0.016898;
+            b6 = white * 0.115926;
+            out[i] = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362) * 0.11;
         }
-        return device.parameters[0];
+        return buffer;
     }
 
     function primeAudio() {
         var Ctx = window.AudioContext || window.webkitAudioContext;
+        if (!Ctx) {
+            showError("このブラウザは Web Audio に対応していません。");
+            return false;
+        }
         if (!audioContext) {
             audioContext = new Ctx();
             outputGain = audioContext.createGain();
             outputGain.gain.value = pendingVolume / 100;
             outputGain.connect(audioContext.destination);
+            noiseBuffer = createPinkNoiseBuffer(audioContext);
         }
         try {
             audioContext.resume();
         } catch (e1) {}
+        return true;
     }
 
     function startKeeperAsync() {
@@ -207,111 +194,54 @@
                 keeperAudio.style.display = "none";
                 document.body.appendChild(keeperAudio);
             }
-            var playP = keeperAudio.play();
-            if (playP && playP.catch) {
-                playP.catch(function () {});
+            var p = keeperAudio.play();
+            if (p && p.catch) {
+                p.catch(function () {});
             }
         } catch (e2) {}
     }
 
     function stopKeeper() {
-        if (!keeperAudio) {
-            return;
+        if (keeperAudio) {
+            keeperAudio.pause();
+            keeperAudio.currentTime = 0;
         }
-        keeperAudio.pause();
-        keeperAudio.currentTime = 0;
     }
 
-    /** dependencies.json は空のため fetch せず即 createDevice（iOS のジェスチャ維持） */
-    function buildEngine() {
-        if (device) {
-            return Promise.resolve(true);
-        }
-        if (!window.RNBO || !audioContext || !outputGain || !patcherCache) {
-            return Promise.resolve(false);
-        }
-
-        return RNBO.createDevice({
-            context: audioContext,
-            patcher: patcherCache,
-        })
-            .then(function (dev) {
-                device = dev;
-                device.node.connect(outputGain);
-                patchVolumeParam = getVolumeParam();
-                if (patchVolumeParam) {
-                    patchVolumeParam.value = 0;
-                }
-                applyVolume(pendingVolume);
-                return true;
-            })
-            .catch(function (err) {
-                showError("RNBO の起動に失敗: " + errMsg(err));
-                device = null;
-                audioInitPromise = null;
-                return false;
-            });
-    }
-
-    function ensureEnginePromise() {
-        if (device) {
-            return Promise.resolve(true);
-        }
-        if (!audioInitPromise) {
-            audioInitPromise = buildEngine();
-        }
-        return audioInitPromise;
-    }
-
-    function beginEngineFromGesture() {
-        if (!patchReady || isPlaying) {
-            return;
-        }
-        primeAudio();
-        if (!device && !audioInitPromise) {
-            audioInitPromise = buildEngine();
+    function stopNoiseSource() {
+        if (noiseSource) {
+            try {
+                noiseSource.stop();
+            } catch (e3) {}
+            try {
+                noiseSource.disconnect();
+            } catch (e4) {}
+            noiseSource = null;
         }
     }
 
     function startPlayback() {
-        primeAudio();
-        if (device) {
-            var volFast = patchVolumeParam || getVolumeParam();
-            if (volFast) {
-                volFast.value = 1;
-                patchVolumeParam = volFast;
-            }
-            applyVolume(pendingVolume);
-            setPlaying(true);
-            startKeeperAsync();
-            return Promise.resolve(true);
+        if (!primeAudio()) {
+            return Promise.resolve(false);
         }
-
         beginBusyIndicator();
-        return ensureEnginePromise().then(function (ok) {
-            if (!ok || !device || !audioContext) {
-                return false;
-            }
-            try {
-                audioContext.resume();
-            } catch (e3) {}
+        stopNoiseSource();
 
-            var vol = patchVolumeParam || getVolumeParam();
-            if (vol) {
-                vol.value = 1;
-                patchVolumeParam = vol;
-            }
-            applyVolume(pendingVolume);
-            setPlaying(true);
-            startKeeperAsync();
-            return true;
-        });
+        noiseSource = audioContext.createBufferSource();
+        noiseSource.buffer = noiseBuffer;
+        noiseSource.loop = true;
+        noiseSource.connect(outputGain);
+        noiseSource.start(0);
+
+        applyVolume(pendingVolume);
+        setPlaying(true);
+        startKeeperAsync();
+        clearBusyIndicator();
+        return Promise.resolve(true);
     }
 
     function stopPlayback() {
-        if (patchVolumeParam) {
-            patchVolumeParam.value = 0;
-        }
+        stopNoiseSource();
         stopKeeper();
         setPlaying(false);
     }
@@ -320,32 +250,22 @@
         if (playToggle && playToggle.disabled) {
             return;
         }
+        if (!appReady) {
+            showError("まだ準備中です。");
+            return;
+        }
         if (isPlaying) {
             stopPlayback();
-            clearBusyIndicator();
             return;
         }
-        if (!patchReady) {
-            showError("まだ読み込み中です。");
-            return;
-        }
-
-        startPlayback()
-            .then(function (started) {
-                if (!started) {
-                    setPlaying(false);
-                }
-            })
-            .catch(function () {
-                setPlaying(false);
-            })
-            .then(function () {
-                clearBusyIndicator();
-            });
+        startPlayback();
     }
 
-    function onTouchStart(e) {
-        beginEngineFromGesture();
+    function onTouchStart() {
+        if (!appReady || isPlaying) {
+            return;
+        }
+        primeAudio();
     }
 
     function onTouchEnd(e) {
@@ -356,39 +276,35 @@
         onPlayAction();
     }
 
-    function onMouseClick() {
-        if (useTouchPlay) {
-            return;
-        }
-        onPlayAction();
-    }
-
     function boot() {
         setPatchLoading(true);
-        setOfflineHint("オフライン準備: 読み込み中…", false);
+        setOfflineHint("オフライン準備: 確認中…", false);
 
-        if (!window.RNBO) {
-            showError("音声ライブラリが読み込めていません（iOS 13.4 以上を推奨）。");
-            setOfflineHint("オフライン準備: ライブラリ未読込", false);
+        var Ctx = window.AudioContext || window.webkitAudioContext;
+        if (!Ctx) {
+            showError("Web Audio 非対応のブラウザです。");
+            setOfflineHint("オフライン準備: 未対応", false);
             return;
         }
 
-        fetchPatcher()
-            .then(function (patcher) {
-                patcherCache = patcher;
-                patchReady = true;
-                clearError();
-                setPatchLoading(false);
-                setOfflineHint("オフライン利用可", true);
-                if (statusHint) {
-                    statusHint.textContent =
-                        "再生をタップ（初回だけ十数秒かかることがあります）";
-                }
-            })
-            .catch(function () {
-                showError("パッチ読み込み失敗。Wi-Fi で開き直してください。");
-                setOfflineHint("オフライン準備: 失敗", false);
-            });
+        var hadReady = false;
+        try {
+            hadReady = localStorage.getItem(APP_READY_KEY) === "1";
+        } catch (e5) {}
+
+        if (hadReady) {
+            setOfflineHint("オフライン準備: 保存済み", false);
+        }
+
+        setPatchLoading(false);
+        markAppReady();
+        clearError();
+        if (statusHint) {
+            statusHint.textContent = "再生するには「再生」をタップしてください";
+        }
+        if (playLabel) {
+            playLabel.textContent = "再生";
+        }
 
         if ("serviceWorker" in navigator) {
             window.addEventListener("load", function () {
@@ -401,7 +317,7 @@
             if (useTouchPlay) {
                 playToggle.addEventListener("touchend", onTouchEnd, false);
             } else {
-                playToggle.addEventListener("click", onMouseClick, false);
+                playToggle.addEventListener("click", onPlayAction, false);
             }
         }
 
@@ -418,7 +334,7 @@
         applyVolume(pendingVolume);
 
         document.addEventListener("visibilitychange", function () {
-            if (document.visibilityState === "visible" && isPlaying && audioContext) {
+            if (document.visibilityState === "visible" && isPlaying) {
                 primeAudio();
             }
         });

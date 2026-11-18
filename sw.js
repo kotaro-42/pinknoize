@@ -1,5 +1,4 @@
-/* eslint-disable no-restricted-globals */
-var CACHE_NAME = "pink-noise-v7";
+var CACHE_NAME = "pink-noise-v8";
 
 var PRECACHE_URLS = [
     "./",
@@ -7,9 +6,6 @@ var PRECACHE_URLS = [
     "./style.css",
     "./manifest.json",
     "./js/app.js",
-    "./js/rnbo.min.js",
-    "./export/Pinknoise.json",
-    "./export/dependencies.json",
     "./icons/icon-192.png",
     "./icons/icon-512.png",
     "./icons/apple-touch-icon.png",
