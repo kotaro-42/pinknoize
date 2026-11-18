@@ -1,15 +1,19 @@
 /**
- * Pink Noise — Web Audio のみ（Max / RNBO 不要）
- * export/ の RNBO 資産は残すがランタイムでは使わない
+ * White Noise — Web Audio のみ
  */
 (function () {
     "use strict";
 
-    var APP_VERSION = "9";
+    var APP_VERSION = "11";
     var APP_READY_KEY = "pink-noise-app-ready-v1";
+    /** ホワイトノイズ振幅（高域が多いのでピンクよりやや控えめ） */
+    var NOISE_AMPLITUDE = 0.22;
+    /** スライダー前の固定ブースト */
+    var NOISE_MAKEUP_GAIN = 1.55;
 
     var audioContext = null;
     var outputGain = null;
+    var noiseMakeupGain = null;
     var noiseSource = null;
     var noiseBuffer = null;
 
@@ -135,32 +139,14 @@
         }
     }
 
-    /** Paul Kellet 系 7 段 — ループ用バッファに焼き込み */
-    function createPinkNoiseBuffer(ctx) {
+    function createWhiteNoiseBuffer(ctx) {
         var sampleRate = ctx.sampleRate;
         var length = sampleRate * 3;
         var buffer = ctx.createBuffer(1, length, sampleRate);
         var out = buffer.getChannelData(0);
-        var b0 = 0;
-        var b1 = 0;
-        var b2 = 0;
-        var b3 = 0;
-        var b4 = 0;
-        var b5 = 0;
-        var b6 = 0;
         var i;
-        var white;
-
         for (i = 0; i < length; i++) {
-            white = Math.random() * 2 - 1;
-            b0 = 0.99886 * b0 + white * 0.0555179;
-            b1 = 0.99332 * b1 + white * 0.0750759;
-            b2 = 0.969 * b2 + white * 0.153852;
-            b3 = 0.8665 * b3 + white * 0.3104856;
-            b4 = 0.55 * b4 + white * 0.5329522;
-            b5 = -0.7616 * b5 - white * 0.016898;
-            b6 = white * 0.115926;
-            out[i] = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362) * 0.11;
+            out[i] = (Math.random() * 2 - 1) * NOISE_AMPLITUDE;
         }
         return buffer;
     }
@@ -175,8 +161,11 @@
             audioContext = new Ctx();
             outputGain = audioContext.createGain();
             outputGain.gain.value = pendingVolume / 100;
+            noiseMakeupGain = audioContext.createGain();
+            noiseMakeupGain.gain.value = NOISE_MAKEUP_GAIN;
+            noiseMakeupGain.connect(outputGain);
             outputGain.connect(audioContext.destination);
-            noiseBuffer = createPinkNoiseBuffer(audioContext);
+            noiseBuffer = createWhiteNoiseBuffer(audioContext);
         }
         try {
             audioContext.resume();
@@ -231,7 +220,7 @@
         noiseSource = audioContext.createBufferSource();
         noiseSource.buffer = noiseBuffer;
         noiseSource.loop = true;
-        noiseSource.connect(outputGain);
+        noiseSource.connect(noiseMakeupGain || outputGain);
         noiseSource.start(0);
 
         applyVolume(pendingVolume);

@@ -1,6 +1,6 @@
-# Pink Noise
+# White Noise
 
-**Web Audio のみ**の PWA。実行ファイルは次のとおり。
+**Web Audio のみ**の PWA（ホワイトノイズ）。実行ファイルは次のとおり。
 
 ```text
 index.html  style.css  sw.js  manifest.json  js/app.js

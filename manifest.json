@@ -1,7 +1,7 @@
 {
-  "name": "Pink Noise",
-  "short_name": "Pink Noise",
-  "description": "オフライン対応ピンクノイズ",
+  "name": "White Noise",
+  "short_name": "White Noise",
+  "description": "オフライン対応ホワイトノイズ",
   "start_url": "index.html",
   "scope": "./",
   "display": "standalone",

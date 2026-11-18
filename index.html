@@ -6,17 +6,17 @@
     <meta name="theme-color" content="#1a1a2e">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="Pink Noise">
+    <meta name="apple-mobile-web-app-title" content="White Noise">
     <link rel="stylesheet" href="style.css">
     <link rel="manifest" href="manifest.json">
     <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-    <title>Pink Noise</title>
+    <title>White Noise</title>
 </head>
 <body>
     <noscript>このアプリを利用するには JavaScript を有効にしてください。</noscript>
     <main class="app" id="app">
-        <h1 class="app-title">Pink Noise</h1>
-        <p class="offline-hint" id="offline-hint">起動中…（v9）</p>
+        <h1 class="app-title">White Noise</h1>
+        <p class="offline-hint" id="offline-hint">起動中…（v11）</p>
         <p class="app-hint" id="status-hint">再生するには「再生」をタップしてください</p>
         <button type="button" class="play-button" id="play-toggle" aria-pressed="false">
             <span class="play-button-label" id="play-label">再生</span>
@@ -40,7 +40,7 @@
     <!-- 旧 RNBO 版の SW/キャッシュを一度外してから本体を読み込む -->
     <script>
     (function () {
-        var APP_VERSION = "9";
+        var APP_VERSION = "11";
         function loadApp() {
             var s = document.createElement("script");
             s.src = "js/app.js?v=" + APP_VERSION;
